@@ -1,0 +1,60 @@
+#see: https://surfer.nmr.mgh.harvard.edu/fswiki/FsTutorial/Tracula/
+#
+# FreeSurfer SUBJECTS_DIR
+# T1 images and FreeSurfer segmentations are expected to be found here
+#
+
+setenv SUBJECTS_DIR __SUBJECTS_DIR__
+
+
+# Output directory where trac-all results will be saved
+# Default: Same as SUBJECTS_DIR
+#
+## change this
+set dtroot = __OUTPUT_DIR__
+
+# Subject IDs
+# (pretend something is a subject id for tracula - it is just the next level down from the SUBJECTS_DIR above)
+set subjlist = ( __FAKE_SUBJECT__ )
+
+# Input diffusion DICOMs (file names relative to dcmroot)
+# If original DICOMs don't exist, these can be in other image format
+# but then bvecfile and bvalfile must be specified
+#
+set dcmroot = __DCM_DIR__
+
+# motion & eddy corrected, clean diffusion data and bvecs and bvals (only the latter two require full path)
+set dcmlist = ( data.nii.gz )
+set bvecfile =  ( $dcmroot/bvecs)
+set bvalfile = ( $dcmroot/bvals )
+
+set dorotbvecs = 0 # set to 0 if the results is the same as my rotated bvecs
+
+set usemaskanat = 1 #uses Freesurfer seg and avoids setting variable bet thresholds as used in FDT
+#set thrbet = 0.2 # previous value for bet????? #not necessary if above = 1
+
+set doregflt = 0 #do flirt instead of bbregister?
+set doregbbr = 1
+### because marcel's preproc is better than eddy_correct
+set dob0 = 0
+set doeddy = 0
+
+set doregmni = 1
+set doregcvs = 0
+
+#set pathlist = ( fmajor_PP )  #### TO TEST
+set pathlist = ( lh.cst_AS rh.cst_AS \
+		 lh.ilf_AS rh.ilf_AS \
+		 lh.unc_AS rh.unc_AS \
+		 fmajor_PP fminor_PP \
+		 lh.atr_PP rh.atr_PP \
+		 lh.ccg_PP rh.ccg_PP \
+		 lh.cab_PP rh.cab_PP \
+ 		 lh.slfp_PP rh.slfp_PP \
+		 lh.slft_PP rh.slft_PP ) 
+#add/remove tracts if desired
+
+#set ncpts = ( 7 ) #adjust/add points to match pathlist
+set ncpts = ( 6 6 5 5 5 5 7 5 5 5 5 5 4 4 5 5 5 5 )
+
+set nb0 = __N_B0__ #number of b0 images
