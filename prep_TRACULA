@@ -1,0 +1,67 @@
+#!/bin/sh
+
+#### This script will set up everything to run tracula for one subject, based on data structure for neuroimage1
+#### This data structure is not as "tracula" (Freesurfer) expects 
+#### Instead of using 1 config file for the entire dataset, this makes one for each subject
+####
+#### Un-comment the last line if you want the script to echo the 2 commands to run tracula. 
+#### These can also be redirected to a text file for qsub.
+#### The commands will run tracula such that output will be put in a new directory, specified by argument 5. 
+#### This mirrors the original Freesurfer directory, but avoids problems with writing permissions
+####
+#### 
+
+
+#### check that you have a template called config_TEMPLATE.txt
+if [ ! -e config_TEMPLATE.txt ]; then echo "ERROR: config_TEMPLATE.txt MISSING"; exit ; fi
+
+#### The following arguments are required
+# 1. Freesurferdir: the full path to the single subject's freesurfer data containing mri/ surf/ labels/ etc...
+# 2. Diffusiondir: the full path to data.nii.gz = the single subject's clean, motion corrected, eddy corrected diffusion data, also contains bvals and bvecs 
+# 3. the number of b0 volumes in the diffusion data
+# 4. Bedpostxdir: the directory to the single subject's bedpostX output
+# 5. Outdir: OUTPUT directory
+
+
+################################ check arguments #####################
+
+if [ $# -lt 5 ]
+  then
+    echo "ERROR: required arguments:" 
+    echo "   1. Freesurferdir: the full path to the single subject's freesurfer data"
+    echo "   2. Diffusiondir: the full path to data.nii.gz = the single subject's corrected diffusion data, also contains bvals and bvecs"
+    echo "   3. The number of b0 volumes in the diffusion data"
+    echo "   4. Bedpostxdir: the directory to the single subject's bedpostX output"
+    echo "   5.  Outdir: OUTPUT directory"
+    exit
+fi
+
+
+Freesurferdir=$1
+Diffusiondir=$2
+Nb0=$3
+Bedpostdir=$4
+Outdir=$5
+
+##################################################################################################
+mkdir $Outdir
+
+#make config file according to TRACULA's expectations
+SUBJECTSDIR=`echo $Freesurferdir | awk 'BEGIN {FS="/"}; {OFS="/"} ; NF{NF-=1}; {print $0}'`
+FAKESUBJECT=`echo $Freesurferdir | awk -F "/" '{print $NF}'`  #the so called subject is supposed to be the last dir in the path to the Freesurferdata
+
+#substitute fields
+cat config_TEMPLATE.txt | sed "s|__SUBJECTS_DIR__|$SUBJECTSDIR|g" \
+			| sed "s|__FAKE_SUBJECT__|$FAKESUBJECT|g" \
+			| sed "s|__OUTPUT_DIR__|$Outdir|g" \
+			| sed "s|__DCM_DIR__|$Diffusiondir|g" \
+			| sed "s|__N_B0__|$Nb0|g" > $Outdir/tracula_config.txt
+
+#make link to bedpost data
+#if that doesn't work then copy the bedpost data
+mkdir $Outdir/FreeSurfer
+ln -s $Bedpostdir $Outdir/FreeSurfer/dmri.bedpostX
+
+##write commands to submit to cluster
+#echo "trac-all -prep -c $Outdir/tracula_config.txt" 
+#echo "trac-all -path -c $Outdir/tracula_config.txt" 
