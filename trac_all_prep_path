@@ -1,0 +1,99 @@
+#!/bin/sh
+#
+# USAGE:
+# Creates a file with tracula commands for each subject
+# Calls script prep_TRACULA.sh for each individual
+# Checks for problems and missing data
+# Submits tracula -prep and -path commands to cluster
+#
+# REQUIRES:
+# prep_TRACULA.sh, config_TEMPLATE.txt and subject_t1_session_list in cwd
+# assumes current neuroimage2 paths to nii data (as of oct 2018)
+#
+# OUTPUT: 
+# TRACULA_prep_COMMANDS.txt
+# TRACULA_path_COMMANDS.txt
+# subdirectories in TRACULA_OUT for each subject with config file and link to bedpostX data
+
+# user inputs
+subject_t1_session_list=NeuroIMAGE1_chosenT1_sessions.txt
+freesurfer_dir=/project/3017011.01/niftibox
+cwd=`pwd`
+out_dir="$cwd/TRACULA_OUT"
+
+####################################################################
+# no need to edit beyond this line, unless customizing prep or path commands to cluster.
+####################################################################
+
+if [ ! -e ./${subject_t1_session_list} ]; 
+	then echo "ERROR: file ${subject_t1_session_list} is missing"
+	exit
+fi
+
+Nmissing=0
+Nbedmiss=0
+Ndeviant=0
+
+rm -r $out_dir
+mkdir $out_dir
+
+while read ID DIR
+do
+
+   # find best T1 image (with Freesurfer in it)
+   Freesurferdir="$freesurfer_dir/${ID}/${DIR}_t1_structural/FreeSurfer"
+   if [ ! -d $Freesurferdir ]; then echo "ERROR: dir $Freesurferdir does not exist!"; continue; fi
+
+   # find diffusion data and if not there, report and do not run
+   Diffusiondir="$freesurfer_dir/${ID}/diffusion/FDT_Data"
+   if [ ! -e $Diffusiondir/data.nii.gz ]; 
+	then echo "no diffusion data in $Diffusiondir"
+        Nmissing=`expr $Nmissing + 1` 
+        continue
+   fi
+
+   # check number of b0 volumes in diffusion data
+   Nb0=`cat $Diffusiondir/bvals | tr -s " " "\n" | grep e+00 | wc | awk '{print $1}'`
+   if [ ! $Nb0 -eq 5 ];  
+	then echo "CAUTION: N b0 volumes of $ID is $Nb0"; 
+	Ndeviant=`expr $Ndeviant + 1`
+   fi 
+
+   # find bedpostdir
+   Bedpostdir="$freesurfer_dir/${ID}/diffusion/FDT_Data.bedpostX"
+   if [ ! -e $Bedpostdir/mean_f1samples.nii.gz ]
+	then echo "ERROR: no bedpostX for $ID"
+        Nbedmiss=`expr $Nbedmiss + 1`
+        continue
+   fi
+
+   # create tracula_config.txt for each subject
+	sh prep_TRACULA.sh $Freesurferdir $Diffusiondir $Nb0 $Bedpostdir $out_dir/$ID
+
+   # write tracula commands
+   echo "trac-all -prep -c $out_dir/$ID/tracula_config.txt" >> $cwd/commands_trac_prep.txt
+   echo "trac-all -path -c $out_dir/$ID/tracula_config.txt" >> $cwd/commands_trac_path.txt
+   
+done < ${subject_t1_session_list}
+
+# report number missing
+echo "------ TOTAL MISSING DIFFUSION DATA = $Nmissing -------- (these will NOT run)"
+echo "------ TOTAL WITH DEVIATING b0 VOLUMES = $Ndeviant ----- (these will still run)" 
+echo "------ TOTAL WITH MISSING BEDPOSTX DATA = $Nbedmiss ---- (these will NOT run) "
+
+
+# tracula prep to cluster
+# walltime can range from 30 min to 5 hrs
+# option: add -no-isrunning to the trac-all command-line
+while read ID DIR
+do
+	echo "trac-all -prep -c $out_dir/$ID/tracula_config.txt" | qsub -N 'trac_prep_NI1' -l 'walltime=4:00:00,mem=20gb'
+done < ${subject_t1_session_list}
+
+
+# tracula path to cluster
+# walltime can range from 30 min to 2 hrs
+while read ID DIR
+do
+	echo "trac-all -no-isrunning -path -c $out_dir/$ID/tracula_config.txt" | qsub -N 'trac_path_NI1' -l 'walltime=5:00:00,mem=32gb'
+done < ${subject_t1_session_list}
