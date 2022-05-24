@@ -1,0 +1,110 @@
+# !/bin/sh
+# CGDamatac, October 2018
+#
+# USAGE 
+# Runs tractstats2table on pathstats.overall.txt
+# Concatenates all subjects into one table for each tract: all_subj.table
+# Concatenates pathstats.byvoxel files across subjects for each pathway
+# Background: https://surfer.nmr.mgh.harvard.edu/fswiki/FsTutorial/TraculaStatistics
+#
+# REQUIRES
+# pathstats.overall.txt
+# pathstats.byvoxel
+# output dir from previous step: trac -path
+# freesurfer 6.0
+#
+# OUPUT
+# tractstats2table_out
+# voxelwise_stats_out
+
+##### user inputs #####
+
+exclude_list=exclude_list.txt # optional list of subjects to exclude
+tracula_out=TRACULA_OUT # output dir from trac -prep and -path 
+out_dir=tracula_stats_out # any dir with same name will be deleted and created again
+
+#######################
+
+start=`date +%s`
+
+module load freesurfer/6.0
+
+echo Deleting pre-existing and creating new output directory named: $out_dir...
+
+if [ -d $out_dir ]
+then 
+rm -r $out_dir
+fi
+
+mkdir $out_dir $out_dir/tractstats2table_out $out_dir/voxelwise_stats_out $out_dir/temp $out_dir/temp/tractstats2table_out $out_dir/temp/voxelwise_stats_out
+
+echo Removing excluded subjects...
+
+while read ID
+do
+rm -r $tracula_out/${ID}
+done < $exclude_list
+
+echo Formatting output tables...
+
+ls -d $tracula_out/* | sed 's/\// /g' | awk '{print $2}' > subject_list.txt # creates subject list from output dirs of trac -path
+subject=`cat subject_list.txt` # can specify other subject list here
+printf "%s\n" $subject > $out_dir/temp/subject_list.txt
+sed '1i\\' < subject_list.txt > $out_dir/temp/subject_list_tractstats2table.txt # all in 1 column
+tr '\n' ' ' < subject_list.txt > $out_dir/temp/subject_list_voxelwise.txt # all in 1 row
+
+tract='fmajor_PP_avg33_mni_bbr fminor_PP_avg33_mni_bbr lh.atr_PP_avg33_mni_bbr lh.cab_PP_avg33_mni_bbr lh.ccg_PP_avg33_mni_bbr lh.cst_AS_avg33_mni_bbr lh.ilf_AS_avg33_mni_bbr lh.slfp_PP_avg33_mni_bbr lh.slft_PP_avg33_mni_bbr lh.unc_AS_avg33_mni_bbr rh.atr_PP_avg33_mni_bbr rh.cab_PP_avg33_mni_bbr rh.ccg_PP_avg33_mni_bbr rh.cst_AS_avg33_mni_bbr rh.ilf_AS_avg33_mni_bbr rh.slfp_PP_avg33_mni_bbr rh.slft_PP_avg33_mni_bbr rh.unc_AS_avg33_mni_bbr'
+
+measure='AD_Avg AD coords.mean FA_Avg FA MD_Avg MD path.mean RD_Avg RD'
+
+echo Concatenating by tract...
+
+for x in $tract
+do
+
+mkdir $out_dir/temp/tractstats2table_out/${x} $out_dir/tractstats2table_out/${x}
+ 
+for y in $subject
+do
+
+# convert pathstats.overall.txt files to a table for group analyses
+# extract all diffusion measures for each subject into a table
+tractstats2table --inputs TRACULA_OUT/${y}/FreeSurfer/dpath/${x}/pathstats.overall.txt --overall --tablefile $out_dir/tractstats2table_out/${x}/${x}_${y}.table
+
+# list inputs for dmri_group
+dir="TRACULA_OUT/$y/FreeSurfer/dpath/${x}"
+bbr="TRACULA_OUT/$y/FreeSurfer/dlabel/diff/aparc+aseg_mask.bbr.nii.gz"
+mat="TRACULA_OUT/$y/FreeSurfer/dmri/xfms/diff2mni.bbr.mat"
+echo "$dir $bbr $mat" >> $out_dir/temp/voxelwise_stats_out/${x}_inputs.txt
+
+done
+		
+# concatenate across subjects
+awk 'FNR>1 || NR==1' $out_dir/tractstats2table_out/${x}/*.table > $out_dir/temp/tractstats2table_out/${x}/all_subj.table
+		
+# Delete 1st column and replace with subject IDs
+sed -i -r 's/\S+//1' $out_dir/temp/tractstats2table_out/${x}/all_subj.table
+paste $out_dir/temp/subject_list_tractstats2table.txt $out_dir/temp/tractstats2table_out/${x}/all_subj.table -d " " >> $out_dir/tractstats2table_out/${x}/all_subj.table
+
+echo Concatenating by voxel...
+
+# convert pathstats.byvoxel.txt files to a table for group analyses
+/opt/freesurfer/6.0/bin/dmri_group --list $out_dir/temp/voxelwise_stats_out/${x}_inputs.txt --ref /opt/fsl/5.0.10/data/standard/MNI152_T1_1mm_brain.nii.gz --out $out_dir/temp/voxelwise_stats_out/${x}
+
+# each tract will have a separate .txt file per measure in voxelwise_stats_out
+for z in $measure
+do 	
+# delete "FreeSurfer" header and replace with subject IDs
+sed -i '1d' $out_dir/temp/voxelwise_stats_out/${x}.${z}.txt
+cat $out_dir/temp/subject_list_voxelwise.txt > $out_dir/voxelwise_stats_out/${x}.${z}.txt
+sed -i -e '$a\' $out_dir/voxelwise_stats_out/${x}.${z}.txt
+cat $out_dir/temp/voxelwise_stats_out/${x}.${z}.txt >> $out_dir/voxelwise_stats_out/${x}.${z}.txt
+done
+
+done
+
+#rm -r $out_dir/temp/
+
+end=`date +%s`
+runtime=$(($end-$start))
+echo Completed tracula_stats.sh in $runtime seconds.
