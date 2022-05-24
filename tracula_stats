@@ -1,5 +1,6 @@
-# !/bin/sh
+#!/bin/sh
 # CGDamatac, October 2018
+# uncleaned
 #
 # USAGE 
 # Runs tractstats2table on pathstats.overall.txt
